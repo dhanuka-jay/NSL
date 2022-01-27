@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using AspNetCoreRateLimit;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.HttpsPolicy;
@@ -14,6 +15,9 @@ using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using NSL.Configurations;
 using NSL.Data;
+using NSL.IRepository;
+using NSL.Repository;
+using NSL.Services;
 
 namespace NSL
 {
@@ -34,6 +38,21 @@ namespace NSL
                 options.UseSqlServer(Configuration.GetConnectionString("sqlConnection"));
             });
 
+            //*** {UD-42} Throttling ***//
+            services.AddMemoryCache();
+            services.ConfigureRateLimiting();
+            services.AddHttpContextAccessor();
+
+            //*** {UD-41} Caching ***//
+            services.ConfigureHttpCacheHeaders();
+
+            //*** Identity Service Configuration ***//
+            services.AddAuthentication();
+            services.ConfigureIdentity();
+
+            //*** JWT configuration ***//
+            services.ConfigureJWT(Configuration);
+
             //*** Add New Core Policy ***//
             services.AddCors(cors =>
             {
@@ -45,11 +64,65 @@ namespace NSL
             });
 
             services.AddAutoMapper(typeof(MapperInitializer));
+            services.AddTransient<IUnitOfWork, UnitOfWork>();
 
-            services.AddControllers();
+            services.AddScoped<IAuthManager, AuthManager>();
+            services.AddSingleton<IProcessingStrategy, AsyncKeyLockProcessingStrategy>();
+
+            //*** {UD-41} Caching ***//
+            services.AddControllers(config =>
+            {
+                config.CacheProfiles.Add("120SecondsDuration", new CacheProfile
+                {
+                    Duration = 120
+                });
+            }).AddNewtonsoftJson(options =>            
+                options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
+            );
+
+
+            //services.AddSwaggerGen(c =>
+            //{
+            //    c.SwaggerDoc("v1", new OpenApiInfo { Title = "NSL", Version = "v1" });
+            //});
+
+            AddSwaggerDoc(services);
+        }
+
+        private void AddSwaggerDoc(IServiceCollection services)
+        {
             services.AddSwaggerGen(c =>
             {
-                c.SwaggerDoc("v1", new OpenApiInfo { Title = "NSL", Version = "v1" });
+                c.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
+                {
+                    Description = @"JWT Authorization header using the Bearer scheme.
+                                    Enter 'Bearer' [space] and then your token in the text input below.
+                                    Exampla: 'Bearer abc123tkon'",
+                    Name = "Authorization",
+                    In = ParameterLocation.Header,
+                    Type = SecuritySchemeType.ApiKey,
+                    Scheme = "Bearer"
+                });
+
+                c.AddSecurityRequirement(new OpenApiSecurityRequirement()
+               {
+                   {
+                        new OpenApiSecurityScheme
+                        {
+                            Reference = new OpenApiReference
+                            {
+                                Type = ReferenceType.SecurityScheme,
+                                Id = "Bearer"
+                            },
+                            Scheme = "0auth2",
+                            Name = "Bearer",
+                            In = ParameterLocation.Header
+                        },
+                    new List<string>()
+                   }
+               });
+
+                c.SwaggerDoc("v1", new OpenApiInfo { Title = "NSL_API", Version = "v1", Description = "Dan Ilandarage - NSL API" });
             });
         }
 
@@ -65,12 +138,22 @@ namespace NSL
             app.UseSwagger();
             app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "NSL v1"));
 
+            app.ConfigureExceptionHandler();
+
             app.UseHttpsRedirection();
 
             app.UseCors("AllowAll");
 
+            //*** {UD-41} Caching ***//
+            app.UseResponseCaching();
+            app.UseHttpCacheHeaders();
+
+            //*** {UD-42} Throttling ***//
+            app.UseIpRateLimiting();
+
             app.UseRouting();
 
+            app.UseAuthentication();
             app.UseAuthorization();
 
             app.UseEndpoints(endpoints =>

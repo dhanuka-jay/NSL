@@ -14,6 +14,7 @@ namespace NSL.Configurations
         {
             CreateMap<Player, PlayerDTO>().ReverseMap();
             CreateMap<Player, CreatePlayerDTO>().ReverseMap();
+            CreateMap<ApiUser, UserDTO>().ReverseMap();
         }
     }
 }

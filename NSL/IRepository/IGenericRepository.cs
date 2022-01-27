@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
+using NSL.Models;
+using X.PagedList;
 
 namespace NSL.IRepository
 {
@@ -11,6 +13,11 @@ namespace NSL.IRepository
         Task<IList<T>> GetAll(
             Expression<Func<T, bool>> expression = null,
             Func<IQueryable<T>, IOrderedQueryable<T>> orderBy = null,
+            List<string> includes = null
+        );
+
+        Task<IPagedList<T>> GetPagedList(
+            RequestParams requestParams,
             List<string> includes = null
         );
 

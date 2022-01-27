@@ -30,4 +30,9 @@ namespace NSL.Models
 
     }
 
+    public class UpdatePlayerDTO : CreatePlayerDTO
+    {
+
+    }
+
 }
